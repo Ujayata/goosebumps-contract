@@ -1,22 +1,23 @@
 module goose_bumps::duck {
-    use std::option;
-    use std::string;
-    use std::ascii;
+    use std::option::Option;
+    use std::string::String;
+    use std::ascii::AsciiString;
 
-    use sui::coin::{Self, Coin, TreasuryCap, CoinMetadata};
-    use sui::transfer;
-    use sui::tx_context::TxContext;
-    use sui::url;
-    use sui::object::{Self, UID};
-    use sui::clock::{Self, Clock};
-
+    use goose_bumps::coin::{self, Coin, TreasuryCap, CoinMetadata};
+    use goose_bumps::transfer;
+    use goose_bumps::tx_context::TxContext;
+    use goose_bumps::url;
+    use goose_bumps::object::{self, UID};
+    use goose_bumps::clock::{self, Clock};
     use goose_bumps::math64;
 
     friend goose_bumps::pond;
 
-    struct DUCK has drop {}
+    struct DUCK {
+        // Duck structure definition
+    }
 
-    struct DuckManager has key {
+    struct DuckManager {
         id: UID,
         cap: TreasuryCap<DUCK>,
         reserve: u64,
@@ -34,13 +35,13 @@ module goose_bumps::duck {
         otw: DUCK, 
         ctx: &mut TxContext
     ) {
-        let (cap, metadata) = coin::create_currency<DUCK>(
+        let (cap, metadata) = coin::create_currency(
             otw, 
             9, 
             b"DUCK", 
             b"Duck", 
             b"BUCK with a boosted yield that gives you goose bumps",  
-            option::some(url::new_unsafe_from_bytes(b"https://twitter.com/goosebumps_farm/photo")), 
+            Option::Some(url::Url::new_unsafe_from_bytes(b"https://twitter.com/goosebumps_farm/photo")),
             ctx
         );
 
@@ -63,15 +64,15 @@ module goose_bumps::duck {
 
     // TODO: admin only + guard
     // called only once
-    entry fun init_duck_manager(
+    fun init_duck_manager(
         manager: &mut DuckManager,
         clock: &Clock, 
         target_average_age: u64,
         adjustment_period_ms: u64,
         adjustment_mul: u64,
-        min_accrual_param: u64,
+        min_accrual_param: u64
     ) {
-        manager.publish_timestamp = clock::timestamp_ms(clock);
+        manager.publish_timestamp = clock.timestamp_ms();
         manager.target_average_age = target_average_age;
         manager.adjustment_period_ms = adjustment_period_ms;
         manager.adjustment_mul = adjustment_mul;
@@ -82,20 +83,21 @@ module goose_bumps::duck {
 
     public(friend) fun supply(
         manager: &DuckManager
-    ): u64 {
+    ) -> u64 {
         coin::total_supply(&manager.cap)
     }
 
     public(friend) fun cap(
         manager: &mut DuckManager
-    ): &mut TreasuryCap<DUCK> {
+    ) -> &mut TreasuryCap<DUCK> {
         &mut manager.cap
     }
 
     public(friend) fun mint(
         treasury_cap: &mut TreasuryCap<DUCK>, 
-        amount: u64, ctx: &mut TxContext
-    ): Coin<DUCK> {
+        amount: u64, 
+        ctx: &mut TxContext
+    ) -> Coin<DUCK> {
         coin::mint(treasury_cap, amount, ctx)
     }
 
@@ -106,32 +108,36 @@ module goose_bumps::duck {
         coin::burn(treasury_cap, coin);
     }
 
-    public(friend) fun current_period(manager: &DuckManager, clock: &Clock): u64 {
-        let duration = clock::timestamp_ms(clock) - manager.publish_timestamp;
+    public(friend) fun current_period(manager: &DuckManager, clock: &Clock) -> u64 {
+        let duration = clock.timestamp_ms() - manager.publish_timestamp;
         duration / manager.adjustment_period_ms
     }
 
-    public(friend) fun handle_accrual_param(manager: &mut DuckManager, clock: &Clock): u64 {
+    public(friend) fun handle_accrual_param(manager: &mut DuckManager, clock: &Clock) -> u64 {
         // accrual param can't go lower than minimum
-        if (manager.accrual_param == manager.min_accrual_param) return manager.accrual_param;
+        if manager.accrual_param == manager.min_accrual_param {
+            return manager.accrual_param;
+        }
         
         let current_period = current_period(manager, clock);
-        if (current_period > manager.last_period_adjusted) {
+        if current_period > manager.last_period_adjusted {
             let target_adjustment_period = math64::div_up(
                 manager.average_start_time + manager.target_average_age - manager.publish_timestamp,
                 manager.adjustment_period_ms
             );
             // adjustment period not reached
-            if (current_period < target_adjustment_period) return manager.accrual_param;
-            // how many times accrual param should adjusted
+            if current_period < target_adjustment_period {
+                return manager.accrual_param;
+            }
+            // how many times accrual param should be adjusted
             let adjustments = current_period - target_adjustment_period;
             let adjusted_accrual_param 
                 = manager.accrual_param * math64::pow(manager.adjustment_mul, adjustments);
             // accrual param can't go lower than minimum
-            if (adjusted_accrual_param > manager.min_accrual_param) {
+            if adjusted_accrual_param > manager.min_accrual_param {
                 manager.accrual_param = adjusted_accrual_param;
-            };
-        };
+            }
+        }
 
         manager.last_period_adjusted = current_period;
         manager.accrual_param
@@ -140,33 +146,33 @@ module goose_bumps::duck {
     // === Admin only ===
 
     // TODO: add admin cap
-    entry fun update_name(
+    fun update_name(
         manager: &DuckManager, 
         metadata: &mut CoinMetadata<DUCK>, 
-        name: string::String
+        name: String
     ) {
         coin::update_name(&manager.cap, metadata, name);
     }
-    entry fun update_symbol(
+    fun update_symbol(
         manager: &DuckManager, 
         metadata: &mut CoinMetadata<DUCK>, 
-        name: ascii::String
+        name: AsciiString
     ) {
         coin::update_symbol(&manager.cap, metadata, name);
     }
-    entry fun update_description(
+    fun update_description(
         manager: &DuckManager, 
         metadata: &mut CoinMetadata<DUCK>, 
-        name: string::String
+        description: String
     ) {
-        coin::update_description(&manager.cap, metadata, name);
+        coin::update_description(&manager.cap, metadata, description);
     }
-    entry fun update_icon_url(
+    fun update_icon_url(
         manager: &DuckManager, 
         metadata: &mut CoinMetadata<DUCK>, 
-        name: ascii::String
+        icon_url: AsciiString
     ) {
-        coin::update_icon_url(&manager.cap, metadata, name);
+        coin::update_icon_url(&manager.cap, metadata, icon_url);
     }
 
     // === Test functions ===
@@ -186,7 +192,7 @@ module goose_bumps::duck {
         target_average_age: u64,
         adjustment_period_ms: u64,
         adjustment_mul: u64,
-        min_accrual_param: u64,
+        min_accrual_param: u64
     ) {
         init_duck_manager(
             manager,
@@ -194,7 +200,7 @@ module goose_bumps::duck {
             target_average_age,
             adjustment_period_ms,
             adjustment_mul,
-            min_accrual_param,
+            min_accrual_param
         );
     }
 }
